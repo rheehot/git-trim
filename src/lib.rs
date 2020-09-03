@@ -15,7 +15,7 @@ use git2::{BranchType, Config as GitConfig, Error as GitError, ErrorCode, Reposi
 use glob::Pattern;
 use log::*;
 
-use crate::args::{DeleteFilter, ScanFilter};
+use crate::args::DeleteFilter;
 use crate::branch::RemoteTrackingBranchStatus;
 pub use crate::branch::{LocalBranch, RemoteBranch, RemoteBranchError, RemoteTrackingBranch};
 use crate::core::{
@@ -46,7 +46,6 @@ impl TryFrom<Repository> for Git {
 pub struct PlanParam<'a> {
     pub bases: Vec<&'a str>,
     pub protected_branches: HashSet<&'a str>,
-    pub scan: ScanFilter,
     pub delete: DeleteFilter,
     pub detach: bool,
 }
@@ -70,7 +69,7 @@ pub fn get_trim_plan(git: &Git, param: &PlanParam) -> Result<TrimPlan> {
     let non_upstream_branches = get_non_upstream_remote_tracking_branches(git, &base_upstreams)?;
     debug!("non_upstream_branches: {:#?}", non_upstream_branches);
 
-    let remote_heads = if param.scan.scan_tracking() {
+    let remote_heads = if param.delete.scan_tracking() {
         let remotes: Vec<_> = direct_fetch_branches
             .iter()
             .map(|(_, r)| r.clone())
@@ -85,7 +84,7 @@ pub fn get_trim_plan(git: &Git, param: &PlanParam) -> Result<TrimPlan> {
     let mut classifier = Classifier::new(git, &merge_tracker);
 
     info!("Enqueue classification requests");
-    if param.scan.scan_tracking() {
+    if param.delete.scan_tracking() {
         for (local, upstream) in &tracking_branches {
             for base in &base_upstreams {
                 classifier.queue_request(TrackingBranchClassificationRequest {
@@ -110,7 +109,7 @@ pub fn get_trim_plan(git: &Git, param: &PlanParam) -> Result<TrimPlan> {
         }
     }
 
-    if param.scan.scan_non_tracking_local() {
+    if param.delete.scan_non_tracking_local() {
         for base in &base_upstreams {
             for local in &non_tracking_branches {
                 classifier.queue_request(NonTrackingBranchClassificationRequest { base, local });
@@ -121,7 +120,7 @@ pub fn get_trim_plan(git: &Git, param: &PlanParam) -> Result<TrimPlan> {
     for base in &base_upstreams {
         for remote_tracking in &non_upstream_branches {
             let remote = remote_tracking.to_remote_branch(&git.repo)?;
-            if param.scan.scan_non_upstream_remote(&remote.remote) {
+            if param.delete.scan_non_upstream_remote(&remote.remote) {
                 classifier.queue_request(NonUpstreamBranchClassificationRequest {
                     base,
                     remote: remote_tracking,
